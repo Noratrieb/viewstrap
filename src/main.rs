@@ -24,12 +24,23 @@ async fn main() {
     tracing_subscriber::registry()
         .with(
             tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "viewstrap=debug,tower_http=debug".into()),
+                .unwrap_or_else(|_| "viewstrap=debug".into()),
         )
         .with(tracing_subscriber::fmt::layer())
         .init();
 
     info!("bootstrapping viewstrap...");
+
+    let Some(rustc_src_dir) = std::env::args().nth(1) else {
+        error!("most provide rust source dir as the first argument");
+        std::process::exit(1);
+    };
+
+    let entrypoint = PathBuf::from(rustc_src_dir).join(if cfg!(windows) { "x.ps1" } else { "x" });
+    if !entrypoint.exists() {
+        error!("{} not found, your rust source is either really old or not a rust source and you lied to me.", entrypoint.display());
+        std::process::exit(1);
+    }
 
     let assets_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("assets");
 
