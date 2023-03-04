@@ -1,0 +1,17 @@
+[package]
+name = "viewstrap"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+axum = { version = "0.6.10", features = ["ws", "headers"] }
+color-eyre = "0.6.2"
+futures = "0.3.26"
+headers = "0.3.8"
+tokio = { version = "1.26.0", features = ["full"] }
+tower = "0.4.13"
+tower-http = { version = "0.4.0", features = ["trace", "fs"] }
+tracing = "0.1.37"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
