@@ -10,6 +10,8 @@ axum = { version = "0.6.10", features = ["ws", "headers"] }
 color-eyre = "0.6.2"
 futures = "0.3.26"
 headers = "0.3.8"
+serde = { version = "1.0.152", features = ["derive"] }
+serde_json = "1.0.93"
 tokio = { version = "1.26.0", features = ["full"] }
 tower = "0.4.13"
 tower-http = { version = "0.4.0", features = ["trace", "fs"] }

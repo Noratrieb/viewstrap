@@ -1,23 +1,26 @@
 #[macro_use]
 extern crate tracing;
 
-use std::{borrow::Cow, net::SocketAddr, path::PathBuf};
+use std::{net::SocketAddr, path::PathBuf};
 
 use axum::{
     extract::{
-        ws::{CloseFrame, Message, WebSocket},
+        ws::{Message, WebSocket},
         ConnectInfo, TypedHeader, WebSocketUpgrade,
     },
     response::IntoResponse,
     routing::get,
     Router,
 };
-use futures::{sink::SinkExt, stream::StreamExt};
+use futures::stream::StreamExt;
+use serde::Serialize;
 use tower_http::{
     services::ServeDir,
     trace::{DefaultMakeSpan, TraceLayer},
 };
-use tracing_subscriber::{prelude::__tracing_subscriber_SubscriberExt, util::SubscriberInitExt};
+use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
+
+mod bootstrap;
 
 #[tokio::main]
 async fn main() {
@@ -47,7 +50,10 @@ async fn main() {
     // build our application with some routes
     let app = Router::new()
         .fallback_service(ServeDir::new(assets_dir).append_index_html_on_directories(true))
-        .route("/ws", get(ws_handler))
+        .route(
+            "/ws",
+            get(move |ws, user_agent, addr| ws_handler(ws, user_agent, addr, entrypoint.clone())),
+        )
         // logging so we can see whats going on
         .layer(
             TraceLayer::new_for_http()
@@ -71,6 +77,7 @@ async fn ws_handler(
     ws: WebSocketUpgrade,
     user_agent: Option<TypedHeader<headers::UserAgent>>,
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    entrypoint: PathBuf,
 ) -> impl IntoResponse {
     let user_agent = if let Some(TypedHeader(user_agent)) = user_agent {
         user_agent.to_string()
@@ -80,11 +87,24 @@ async fn ws_handler(
     println!("`{user_agent}` at {addr} connected.");
     // finalize the upgrade process by returning upgrade callback.
     // we can customize the callback by sending additional info such as address.
-    ws.on_upgrade(move |socket| handle_socket(socket, addr))
+    ws.on_upgrade(move |socket| handle_socket(socket, addr, entrypoint))
+}
+
+#[derive(Debug, Clone, Serialize)]
+enum ServerMessage<'a> {
+    Stdout(&'a str),
+    Stderr(&'a str),
+}
+
+impl<'a> From<ServerMessage<'a>> for Message {
+    fn from(value: ServerMessage<'a>) -> Self {
+        let text = serde_json::to_string(&value).unwrap();
+        Message::Text(text)
+    }
 }
 
 /// Actual websocket statemachine (one will be spawned per connection)
-async fn handle_socket(mut socket: WebSocket, who: SocketAddr) {
+async fn handle_socket(mut socket: WebSocket, who: SocketAddr, entrypoint: PathBuf) {
     //send a ping (unsupported by some browsers) just to kick things off and get a response
     if socket.send(Message::Ping(vec![1, 2, 3])).await.is_ok() {
         info!("Pinged {}...", who);
@@ -112,42 +132,16 @@ async fn handle_socket(mut socket: WebSocket, who: SocketAddr) {
     // unsolicited messages to client based on some sort of server's internal event (i.e .timer).
     let (mut sender, mut receiver) = socket.split();
 
-    // Spawn a task that will push several messages to the client (does not matter what client does)
-    let mut send_task = tokio::spawn(async move {
-        println!("Sending close to {who}...");
-        if let Err(e) = sender
-            .send(Message::Close(Some(CloseFrame {
-                code: axum::extract::ws::close_code::NORMAL,
-                reason: Cow::from("Goodbye"),
-            })))
-            .await
-        {
-            println!("Could not send Close due to {}, probably it is ok?", e);
-        }
-    });
-
     // This second task will receive messages from client and print them on server console
-    let mut recv_task = tokio::spawn(async move {
-        while let Some(Ok(msg)) = receiver.next().await {
-            info!(?msg);
-        }
-    });
+    while let Some(Ok(msg)) = receiver.next().await {
+        info!(?msg);
 
-    // If any one of the tasks exit, abort the other.
-    tokio::select! {
-        rv_a = (&mut send_task) => {
-            match rv_a {
-                Ok(_) => {},
-                Err(a) => error!("Error sending messages {:?}", a)
+        if let Message::Text(msg) = msg {
+            if msg == "bootstrap me" {
+                if let Err(err) = bootstrap::build_a_compiler(&mut sender, &entrypoint).await {
+                    error!(%err);
+                }
             }
-            recv_task.abort();
-        },
-        rv_b = (&mut recv_task) => {
-            match rv_b {
-                Ok(_) => {},
-                Err(b) => error!("Error receiving messages {:?}", b)
-            }
-            send_task.abort();
         }
     }
 

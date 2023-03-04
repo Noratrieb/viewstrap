@@ -9,14 +9,37 @@
   <body>
     <button onclick="startWs()">build me a compiler</button>
 
+    <br />
+    <br />
+
+    <textarea id="stdout" rows="30" cols="80"></textarea>
+    <textarea id="stderr" rows="30" cols="80"></textarea>
+
     <script>
       function startWs() {
         console.log("starting ws");
 
+        const stdout = document.getElementById("stdout");
+        const stderr = document.getElementById("stderr");
+
         const ws = new WebSocket("ws://localhost:3000/ws");
 
         ws.addEventListener("open", () => {
-          ws.send("uwu!");
+          ws.send("bootstrap me");
+        });
+
+        ws.addEventListener("message", (event) => {
+          console.log(event.data);
+
+          const msg = JSON.parse(event.data);
+          console.log(msg);
+
+          if ("Stdout" in msg) {
+            stdout.value += msg.Stdout;
+          }
+          if ("Stderr" in msg) {
+            stdout.value += msg.Stderr;
+          }
         });
       }
     </script>
