@@ -3,6 +3,7 @@ use std::{path::Path, pin::Pin, process::Stdio};
 use axum::extract::ws::{self, WebSocket};
 use color_eyre::{eyre::Context, Result};
 use futures::{stream::SplitSink, SinkExt};
+use serde::Serialize;
 use tokio::{
     io::{AsyncRead, AsyncReadExt},
     process::{Child, Command},
@@ -34,6 +35,29 @@ pub async fn build_a_compiler(
     handle_stdouts(Box::pin(stdout), Box::pin(stderr), cmd, output).await?;
 
     Ok(())
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub enum Compiler {
+    Bootstrap,
+    Dev,
+    Dist,
+}
+
+pub async fn list_compilers(entrypoint: &Path) -> Vec<Compiler> {
+    let mut compilers = vec![Compiler::Bootstrap];
+
+    let build = entrypoint.parent().unwrap().join("build/host");
+
+    if let Ok(true) = tokio::fs::try_exists(build.join("stage1").join("bin").join("rustc")).await {
+        compilers.push(Compiler::Dev);
+    }
+
+    if let Ok(true) = tokio::fs::try_exists(build.join("stage2").join("bin").join("rustc")).await {
+        compilers.push(Compiler::Dist);
+    }
+
+    compilers
 }
 
 async fn handle_stdouts(

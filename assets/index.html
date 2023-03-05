@@ -28,6 +28,21 @@
         display: flex;
         margin-bottom: 10px;
       }
+
+      #compilers-wrapper {
+        display: flex;
+        height: 100px;
+      }
+
+      .compiler {
+        height: 70px;
+        width: 150px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border: 1px black solid;
+        background: rgb(185, 210, 181);
+      }
     </style>
   </head>
   <body>
@@ -36,7 +51,14 @@
       <div class="source-box"><div class="source-box-text">LIBRARY</div></div>
     </div>
 
-    <button onclick="startWs()">build me a compiler</button>
+    <div id="compilers-wrapper"></div>
+
+    <button class="compile-action" disabled onclick="compile()">
+      build me a compiler
+    </button>
+    <button class="compile-action" disabled onclick="updateCompilers()">
+      update compilers
+    </button>
 
     <br />
     <br />
@@ -45,33 +67,66 @@
     <textarea id="stderr" rows="30" cols="80"></textarea>
 
     <script>
-      function startWs() {
-        console.log("starting ws");
-        const stdout = document.getElementById("stdout");
-        const stderr = document.getElementById("stderr");
+      const stdout = document.getElementById("stdout");
+      const stderr = document.getElementById("stderr");
+
+      const compilersWrapper = document.getElementById("compilers-wrapper");
+
+      const compileActions = document.querySelectorAll(".compile-action");
+
+      const ws = new WebSocket("ws://localhost:3000/ws");
+
+      ws.addEventListener("open", () => {
+        for (elem of compileActions) {
+          elem.disabled = false;
+        }
+
+        ws.send(JSON.stringify("ListCompilers"));
+      });
+
+      ws.addEventListener("message", (event) => {
+        console.log(event.data);
+
+        const msg = JSON.parse(event.data);
+        console.log(msg);
+
+        if ("Stdout" in msg) {
+          stdout.value += msg.Stdout;
+        }
+        if ("Stderr" in msg) {
+          stdout.value += msg.Stderr;
+        }
+        if ("AvailableCompilers" in msg) {
+          console.log("compilers");
+          const compilers = msg.AvailableCompilers;
+
+          compilersWrapper.innerHTML = "";
+
+          for (const compiler of compilers) {
+            const inner = document.createElement("div");
+            inner.innerText = compiler;
+            inner.classList.add("source-box-text");
+            const elem = document.createElement("div");
+            elem.classList.add("compiler");
+            elem.appendChild(inner);
+            compilersWrapper.appendChild(elem);
+          }
+        }
+      });
+
+      function compile() {
+        console.log("compiling");
+
+        ws.send(JSON.stringify("Compile"));
 
         stdout.value = "";
         stderr.value = "";
+      }
 
-        const ws = new WebSocket("ws://localhost:3000/ws");
+      function updateCompilers() {
+        console.log("list compilers");
 
-        ws.addEventListener("open", () => {
-          ws.send("bootstrap me");
-        });
-
-        ws.addEventListener("message", (event) => {
-          console.log(event.data);
-
-          const msg = JSON.parse(event.data);
-          console.log(msg);
-
-          if ("Stdout" in msg) {
-            stdout.value += msg.Stdout;
-          }
-          if ("Stderr" in msg) {
-            stdout.value += msg.Stderr;
-          }
-        });
+        ws.send(JSON.stringify("ListCompilers"));
       }
     </script>
   </body>

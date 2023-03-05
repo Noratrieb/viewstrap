@@ -5,15 +5,16 @@ use std::{net::SocketAddr, path::PathBuf};
 
 use axum::{
     extract::{
-        ws::{Message, WebSocket},
+        ws::{CloseFrame, Message, WebSocket},
         ConnectInfo, TypedHeader, WebSocketUpgrade,
     },
     response::IntoResponse,
     routing::get,
     Router,
 };
-use futures::stream::StreamExt;
-use serde::Serialize;
+use bootstrap::Compiler;
+use futures::{stream::StreamExt, SinkExt};
+use serde::{Deserialize, Serialize};
 use tower_http::{
     services::ServeDir,
     trace::{DefaultMakeSpan, TraceLayer},
@@ -94,6 +95,13 @@ async fn ws_handler(
 enum ServerMessage<'a> {
     Stdout(&'a str),
     Stderr(&'a str),
+    AvailableCompilers(Vec<Compiler>),
+}
+
+#[derive(Debug, Clone, Deserialize)]
+enum ClientMessage {
+    Compile,
+    ListCompilers,
 }
 
 impl<'a> From<ServerMessage<'a>> for Message {
@@ -136,10 +144,35 @@ async fn handle_socket(mut socket: WebSocket, who: SocketAddr, entrypoint: PathB
     while let Some(Ok(msg)) = receiver.next().await {
         info!(?msg);
 
-        if let Message::Text(msg) = msg {
-            if msg == "bootstrap me" {
-                if let Err(err) = bootstrap::build_a_compiler(&mut sender, &entrypoint).await {
-                    error!(%err);
+        if let Message::Text(msg_str) = msg {
+            let msg = serde_json::from_str::<ClientMessage>(&msg_str);
+
+            match msg {
+                Ok(ClientMessage::Compile) => {
+                    if let Err(err) = bootstrap::build_a_compiler(&mut sender, &entrypoint).await {
+                        error!(%err);
+                    }
+                }
+                Ok(ClientMessage::ListCompilers) => {
+                    let compilers = bootstrap::list_compilers(&entrypoint).await;
+                    if let Err(err) = sender
+                        .send(ServerMessage::AvailableCompilers(compilers).into())
+                        .await
+                    {
+                        error!(%err);
+                    }
+                }
+                Err(err) => {
+                    error!(?err, ?msg_str, "invalid client message");
+                    if let Err(err) = sender
+                        .send(Message::Close(Some(CloseFrame {
+                            code: 0,
+                            reason: "invalid message, you naughty".into(),
+                        })))
+                        .await
+                    {
+                        error!(%err);
+                    }
                 }
             }
         }
