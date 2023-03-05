@@ -12,7 +12,6 @@ use axum::{
     routing::get,
     Router,
 };
-use bootstrap::Compiler;
 use futures::{stream::StreamExt, SinkExt};
 use serde::{Deserialize, Serialize};
 use tower_http::{
@@ -96,11 +95,25 @@ enum ServerMessage<'a> {
     Stdout(&'a str),
     Stderr(&'a str),
     AvailableCompilers(Vec<Compiler>),
+    Done(bool),
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum Compiler {
+    Bootstrap,
+    Dev,
+    Dist,
 }
 
 #[derive(Debug, Clone, Deserialize)]
-enum ClientMessage {
-    Compile,
+pub enum Action {
+    BuildCompiler,
+    BuildLibrary,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub enum ClientMessage {
+    Compile { compiler: Compiler, action: Action },
     ListCompilers,
 }
 
@@ -148,8 +161,14 @@ async fn handle_socket(mut socket: WebSocket, who: SocketAddr, entrypoint: PathB
             let msg = serde_json::from_str::<ClientMessage>(&msg_str);
 
             match msg {
-                Ok(ClientMessage::Compile) => {
-                    if let Err(err) = bootstrap::build_a_compiler(&mut sender, &entrypoint).await {
+                Ok(ClientMessage::Compile { compiler, action }) => {
+                    let mut success = true;
+                    if let Err(err) = bootstrap::build_a_compiler(&mut sender, &entrypoint,  compiler, action).await {
+                        error!(%err);
+                        success = false;
+                    }
+
+                    if let Err(err) = sender.send(ServerMessage::Done(success).into()).await {
                         error!(%err);
                     }
                 }

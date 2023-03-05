@@ -3,23 +3,35 @@ use std::{path::Path, pin::Pin, process::Stdio};
 use axum::extract::ws::{self, WebSocket};
 use color_eyre::{eyre::Context, Result};
 use futures::{stream::SplitSink, SinkExt};
-use serde::Serialize;
 use tokio::{
     io::{AsyncRead, AsyncReadExt},
     process::{Child, Command},
 };
 
-use crate::ServerMessage;
+use crate::{Action, Compiler, ServerMessage};
 
 pub async fn build_a_compiler(
     output: &mut SplitSink<WebSocket, ws::Message>,
     entrypoint: &Path,
+    compiler: Compiler,
+    action: Action,
 ) -> Result<()> {
     let cwd = entrypoint.parent().unwrap();
 
+    let stage = match compiler {
+        Compiler::Bootstrap => "0",
+        Compiler::Dev => "1",
+        Compiler::Dist => "2",
+    };
+
+    let action = match action {
+        Action::BuildCompiler => "compiler",
+        Action::BuildLibrary => "library",
+    };
+
     let mut cmd = Command::new(entrypoint);
     cmd.current_dir(cwd);
-    cmd.args(["build", "--stage", "1", "library"]);
+    cmd.args(["build", "--stage", stage, action]);
     // cmd.arg("--help");
 
     cmd.stdout(Stdio::piped());
@@ -35,13 +47,6 @@ pub async fn build_a_compiler(
     handle_stdouts(Box::pin(stdout), Box::pin(stderr), cmd, output).await?;
 
     Ok(())
-}
-
-#[derive(Debug, Clone, Serialize)]
-pub enum Compiler {
-    Bootstrap,
-    Dev,
-    Dist,
 }
 
 pub async fn list_compilers(entrypoint: &Path) -> Vec<Compiler> {

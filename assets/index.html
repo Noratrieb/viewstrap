@@ -38,7 +38,7 @@
       #inventory-wrapper {
         display: flex;
         height: 100px;
-        gap: 5px
+        gap: 5px;
       }
 
       .item-compiler {
@@ -58,6 +58,10 @@
         background: grey;
       }
 
+      .crafting-slot-dragover {
+        background: green;
+      }
+
       .crafting-icon {
         height: 100px;
         width: 70px;
@@ -67,6 +71,10 @@
       .crafting-progress-indicator {
         height: 100px;
         width: 100px;
+      }
+
+      .crafting-progress-arrow {
+        cursor: pointer;
       }
 
       .crafting-progress-arrow-running {
@@ -98,6 +106,12 @@
           background-position: 0% 82%;
         }
       }
+
+      #error {
+        color: red;
+        margin-left: 10px;
+        font-size: 18px;
+      }
     </style>
   </head>
   <body>
@@ -109,14 +123,16 @@
     <div class="region">
       <h1>Crafting</h1>
       <div class="crafting-wrapper">
-        <div class="crafting-slot item center-inner"></div>
+        <div id="crafting-slot-1" class="crafting-slot item"></div>
         <div class="crafting-icon center-inner">
           <span class>&#x2795;</span>
         </div>
-        <div class="crafting-slot item center-inner"></div>
+        <div id="crafting-slot-2" class="crafting-slot item"></div>
         <div
           id="crafting-progress-arrow"
-          class="crafting-progress-arrow-running__"
+          class="crafting-progress-arrow"
+          role="button"
+          onclick="compile()"
         >
           <svg class="crafting-progress-indicator" viewBox="0 0 100 100">
             <!--
@@ -140,13 +156,12 @@
           </svg>
         </div>
         <div class="crafting-slot item center-inner"></div>
+
+        <div id="error"></div>
       </div>
     </div>
 
     <div>
-      <button class="compile-action" disabled onclick="compile()">
-        build me a compiler
-      </button>
       <button class="compile-action" disabled onclick="updateCompilers()">
         update compilers
       </button>
@@ -165,27 +180,75 @@
         }
       }
 
+      const errorElem = document.getElementById("error");
+
+      function setError(msg) {
+        error.innerText = msg;
+      }
+      function resetError() {
+        error.innerText = "";
+      }
+
+      function renderItem(item) {
+        const inner = document.createElement("div");
+        inner.innerText = item.name;
+        inner.classList.add("source-box-text");
+        const elem = document.createElement("div");
+        elem.classList.add(`item-${item.type}`);
+        elem.classList.add("center-inner");
+        elem.classList.add("item");
+        elem.item = item;
+        elem.appendChild(inner);
+        elem.draggable = true;
+        elem.addEventListener("dragstart", (event) => {
+          const dt = event.dataTransfer;
+          dt.setData("application/json", JSON.stringify(item));
+          dt.dropEffect = "move";
+        });
+        return elem;
+      }
+
+      function setupDragDropSlot(elem) {
+        elem.addEventListener("dragover", (event) => {
+          event.preventDefault();
+          elem.classList.add("crafting-slot-dragover");
+        });
+        elem.addEventListener("dragleave", (event) => {
+          event.preventDefault();
+          elem.classList.remove("crafting-slot-dragover");
+        });
+        elem.addEventListener("drop", (event) => {
+          event.preventDefault();
+
+          resetError();
+
+          const data = JSON.parse(
+            event.dataTransfer.getData("application/json")
+          );
+          const item = new Item(data.name, data.type);
+          const itemElem = renderItem(item);
+
+          elem.innerHTML = "";
+          elem.appendChild(itemElem);
+          elem.classList.remove("crafting-slot-dragover");
+          elem.item = item;
+        });
+      }
+
       class Inventory {
         constructor(initialItems) {
           this.dom = document.getElementById("inventory-wrapper");
 
           for (const item of initialItems) {
-            const elem = this.renderItem(item);
+            const elem = renderItem(item);
             this.dom.appendChild(elem);
           }
-        }
 
-        renderItem(item) {
-          const inner = document.createElement("div");
-          inner.innerText = item.name;
-          inner.classList.add("source-box-text");
-          const elem = document.createElement("div");
-          elem.classList.add(`item-${item.type}`);
-          elem.classList.add("center-inner");
-          elem.classList.add("item");
-          elem.item = item;
-          elem.appendChild(inner);
-          return elem;
+          this.craftingSlot1 = document.getElementById("crafting-slot-1");
+          this.craftingSlot2 = document.getElementById("crafting-slot-2");
+
+          setupDragDropSlot(this.craftingSlot1);
+          setupDragDropSlot(this.craftingSlot2);
         }
 
         items() {
@@ -200,7 +263,7 @@
               (inner) => inner.name == item.name && inner.type == item.type
             )
           ) {
-            const elem = this.renderItem(item);
+            const elem = renderItem(item);
             this.dom.appendChild(elem);
           }
         }
@@ -212,6 +275,10 @@
       const compilersWrapper = document.getElementById("inventory-wrapper");
 
       const compileActions = document.querySelectorAll(".compile-action");
+
+      const craftingProgressArrow = document.getElementById(
+        "crafting-progress-arrow"
+      );
 
       const inventory = new Inventory([
         new Item("compiler", "source"),
@@ -241,15 +308,67 @@
         }
         if ("AvailableCompilers" in msg) {
           for (const compiler of msg.AvailableCompilers) {
-            inventory.appendIfNotExists(new Item(`rustc ${compiler}`, "compiler"));
+            inventory.appendIfNotExists(
+              new Item(`rustc ${compiler}`, "compiler")
+            );
           }
+        }
+        if ("Done" in msg) {
+          craftingProgressArrow.classList.remove(
+            "crafting-progress-arrow-running"
+          );
+          const error = msg.Done ? "" : "an error occurred";
+          setError(error);
         }
       });
 
       function compile() {
+        const arrowClasses = craftingProgressArrow.classList;
+        if (arrowClasses.contains("crafting-progress-arrow-running")) {
+          return;
+        }
+
         console.log("compiling");
 
-        ws.send(JSON.stringify("Compile"));
+        resetError();
+
+        const item1 = inventory.craftingSlot1.item;
+        if (!item1) {
+          setError("left side must be filled");
+          return;
+        }
+        const item2 = inventory.craftingSlot2.item;
+        if (!item2) {
+          setError("right side must be filled");
+          return;
+        }
+
+        console.log("Items", item1, item2);
+
+        const action = [item1, item2].find((item) => item.type == "source");
+        if (!action) {
+          setError("must include a source in the crafting receipe");
+          return;
+        }
+        const compiler = [item1, item2].find((item) => item.type == "compiler");
+        if (!compiler) {
+          setError("must include a compiler in the crafting receipe");
+          return;
+        }
+
+        arrowClasses.add("crafting-progress-arrow-running");
+
+        const compilerName = compiler.name.split(" ")[1];
+        const actionName = {
+          library: "BuildLibrary",
+          compiler: "BuildCompiler",
+        }[action.name];
+
+        ws.send(
+          JSON.stringify({
+            Compile: { compiler: compilerName, action: actionName },
+          })
+        );
 
         stdout.value = "";
         stderr.value = "";
