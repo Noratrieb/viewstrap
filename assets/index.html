@@ -10,69 +10,213 @@
         font-family: sans-serif;
       }
 
-      .source-box {
-        border: 1px black solid;
-        background: rgb(188, 188, 188);
-        width: 500px;
-        height: 150px;
+      h1 {
+        margin: 0;
+      }
+
+      .center-inner {
         display: flex;
         align-items: center;
         justify-content: center;
+      }
+
+      .item {
+        height: 100px;
+        width: 100px;
+        border: 1px black solid;
+      }
+
+      .item-source {
+        background: rgb(188, 188, 188);
       }
 
       .source-box-text {
         font-size: 18pt;
+        text-align: center;
       }
 
-      .source-wrapper {
-        display: flex;
-        margin-bottom: 10px;
-      }
-
-      #compilers-wrapper {
+      #inventory-wrapper {
         display: flex;
         height: 100px;
+        gap: 5px
       }
 
-      .compiler {
-        height: 70px;
-        width: 150px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        border: 1px black solid;
+      .item-compiler {
         background: rgb(185, 210, 181);
+      }
+
+      .region {
+        border: 2px solid grey;
+        padding: 5px;
+      }
+
+      .crafting-wrapper {
+        display: flex;
+      }
+
+      .crafting-slot {
+        background: grey;
+      }
+
+      .crafting-icon {
+        height: 100px;
+        width: 70px;
+        font-size: 20pt;
+      }
+
+      .crafting-progress-indicator {
+        height: 100px;
+        width: 100px;
+      }
+
+      .crafting-progress-arrow-running {
+        background: linear-gradient(
+          0deg,
+          #ff2400,
+          #e81d1d,
+          #e8b71d,
+          #e3e81d,
+          #1de840,
+          #1ddde8,
+          #2b1de8,
+          #dd00f3,
+          #dd00f3
+        );
+
+        background-size: 1800% 1800%;
+        animation: rainbow 10s ease infinite;
+      }
+
+      @keyframes rainbow {
+        0% {
+          background-position: 0% 82%;
+        }
+        50% {
+          background-position: 100% 19%;
+        }
+        100% {
+          background-position: 0% 82%;
+        }
       }
     </style>
   </head>
   <body>
-    <div class="source-wrapper">
-      <div class="source-box"><div class="source-box-text">COMPILER</div></div>
-      <div class="source-box"><div class="source-box-text">LIBRARY</div></div>
+    <div class="region">
+      <h1>Inventory</h1>
+      <div id="inventory-wrapper"></div>
     </div>
 
-    <div id="compilers-wrapper"></div>
+    <div class="region">
+      <h1>Crafting</h1>
+      <div class="crafting-wrapper">
+        <div class="crafting-slot item center-inner"></div>
+        <div class="crafting-icon center-inner">
+          <span class>&#x2795;</span>
+        </div>
+        <div class="crafting-slot item center-inner"></div>
+        <div
+          id="crafting-progress-arrow"
+          class="crafting-progress-arrow-running__"
+        >
+          <svg class="crafting-progress-indicator" viewBox="0 0 100 100">
+            <!--
+              Arrow.
+              line length 50, line height 20
+              triangle full height 20+2*20
+              triangle width 30 
+            -->
+            <path
+              fill="currentColor"
+              d="
+            M 10,40
+            l 50,0
+            l 0,-20
+            L 90,50
+            L 60,80
+            l 0,-20
+            l -50,0
+            "
+            ></path>
+          </svg>
+        </div>
+        <div class="crafting-slot item center-inner"></div>
+      </div>
+    </div>
 
-    <button class="compile-action" disabled onclick="compile()">
-      build me a compiler
-    </button>
-    <button class="compile-action" disabled onclick="updateCompilers()">
-      update compilers
-    </button>
+    <div>
+      <button class="compile-action" disabled onclick="compile()">
+        build me a compiler
+      </button>
+      <button class="compile-action" disabled onclick="updateCompilers()">
+        update compilers
+      </button>
+    </div>
 
-    <br />
-    <br />
-
-    <textarea id="stdout" rows="30" cols="80"></textarea>
-    <textarea id="stderr" rows="30" cols="80"></textarea>
+    <div>
+      <textarea id="stdout" rows="30" cols="80"></textarea>
+      <textarea id="stderr" rows="30" cols="80"></textarea>
+    </div>
 
     <script>
+      class Item {
+        constructor(name, type) {
+          this.name = name;
+          this.type = type;
+        }
+      }
+
+      class Inventory {
+        constructor(initialItems) {
+          this.dom = document.getElementById("inventory-wrapper");
+
+          for (const item of initialItems) {
+            const elem = this.renderItem(item);
+            this.dom.appendChild(elem);
+          }
+        }
+
+        renderItem(item) {
+          const inner = document.createElement("div");
+          inner.innerText = item.name;
+          inner.classList.add("source-box-text");
+          const elem = document.createElement("div");
+          elem.classList.add(`item-${item.type}`);
+          elem.classList.add("center-inner");
+          elem.classList.add("item");
+          elem.item = item;
+          elem.appendChild(inner);
+          return elem;
+        }
+
+        items() {
+          const children = this.dom.children;
+          return Array.from(children).map((child) => child.item);
+        }
+
+        appendIfNotExists(item) {
+          const items = this.items();
+          if (
+            !items.find(
+              (inner) => inner.name == item.name && inner.type == item.type
+            )
+          ) {
+            const elem = this.renderItem(item);
+            this.dom.appendChild(elem);
+          }
+        }
+      }
+
       const stdout = document.getElementById("stdout");
       const stderr = document.getElementById("stderr");
 
-      const compilersWrapper = document.getElementById("compilers-wrapper");
+      const compilersWrapper = document.getElementById("inventory-wrapper");
 
       const compileActions = document.querySelectorAll(".compile-action");
+
+      const inventory = new Inventory([
+        new Item("compiler", "source"),
+        new Item("library", "source"),
+      ]);
 
       const ws = new WebSocket("ws://localhost:3000/ws");
 
@@ -85,10 +229,9 @@
       });
 
       ws.addEventListener("message", (event) => {
-        console.log(event.data);
+        console.log("Received event", event.data);
 
         const msg = JSON.parse(event.data);
-        console.log(msg);
 
         if ("Stdout" in msg) {
           stdout.value += msg.Stdout;
@@ -97,19 +240,8 @@
           stdout.value += msg.Stderr;
         }
         if ("AvailableCompilers" in msg) {
-          console.log("compilers");
-          const compilers = msg.AvailableCompilers;
-
-          compilersWrapper.innerHTML = "";
-
-          for (const compiler of compilers) {
-            const inner = document.createElement("div");
-            inner.innerText = compiler;
-            inner.classList.add("source-box-text");
-            const elem = document.createElement("div");
-            elem.classList.add("compiler");
-            elem.appendChild(inner);
-            compilersWrapper.appendChild(elem);
+          for (const compiler of msg.AvailableCompilers) {
+            inventory.appendIfNotExists(new Item(`rustc ${compiler}`, "compiler"));
           }
         }
       });
