@@ -26,11 +26,11 @@
         border: 1px black solid;
       }
 
-      .item-source {
+      .item-action {
         background: rgb(188, 188, 188);
       }
 
-      .source-box-text {
+      .item-text {
         font-size: 18pt;
         text-align: center;
       }
@@ -162,12 +162,6 @@
     </div>
 
     <div>
-      <button class="compile-action" disabled onclick="updateCompilers()">
-        update compilers
-      </button>
-    </div>
-
-    <div>
       <textarea id="stdout" rows="30" cols="80"></textarea>
       <textarea id="stderr" rows="30" cols="80"></textarea>
     </div>
@@ -192,7 +186,7 @@
       function renderItem(item) {
         const inner = document.createElement("div");
         inner.innerText = item.name;
-        inner.classList.add("source-box-text");
+        inner.classList.add("item-text");
         const elem = document.createElement("div");
         elem.classList.add(`item-${item.type}`);
         elem.classList.add("center-inner");
@@ -281,8 +275,8 @@
       );
 
       const inventory = new Inventory([
-        new Item("compiler", "source"),
-        new Item("library", "source"),
+        new Item("compiler", "action"),
+        new Item("library", "action"),
       ]);
 
       const ws = new WebSocket("ws://localhost:3000/ws");
@@ -319,6 +313,7 @@
           );
           const error = msg.Done ? "" : "an error occurred";
           setError(error);
+          updateCompilers();
         }
       });
 
@@ -345,9 +340,9 @@
 
         console.log("Items", item1, item2);
 
-        const action = [item1, item2].find((item) => item.type == "source");
+        const action = [item1, item2].find((item) => item.type == "action");
         if (!action) {
-          setError("must include a source in the crafting receipe");
+          setError("must include an action in the crafting receipe");
           return;
         }
         const compiler = [item1, item2].find((item) => item.type == "compiler");
