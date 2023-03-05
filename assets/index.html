@@ -4,9 +4,38 @@
     <meta charset="UTF-8" />
     <meta http-equiv="X-UA-Compatible" content="IE=edge" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Document</title>
+    <title>Viewstrap</title>
+    <style>
+      html {
+        font-family: sans-serif;
+      }
+
+      .source-box {
+        border: 1px black solid;
+        background: rgb(188, 188, 188);
+        width: 500px;
+        height: 150px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      .source-box-text {
+        font-size: 18pt;
+      }
+
+      .source-wrapper {
+        display: flex;
+        margin-bottom: 10px;
+      }
+    </style>
   </head>
   <body>
+    <div class="source-wrapper">
+      <div class="source-box"><div class="source-box-text">COMPILER</div></div>
+      <div class="source-box"><div class="source-box-text">LIBRARY</div></div>
+    </div>
+
     <button onclick="startWs()">build me a compiler</button>
 
     <br />
@@ -18,9 +47,11 @@
     <script>
       function startWs() {
         console.log("starting ws");
-
         const stdout = document.getElementById("stdout");
         const stderr = document.getElementById("stderr");
+
+        stdout.value = "";
+        stderr.value = "";
 
         const ws = new WebSocket("ws://localhost:3000/ws");
 
